@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+
 )
 
 func init() {
@@ -11,9 +11,8 @@ func init() {
 }
 
 func main() {
+	defer SaveStack()
 	Logging("Start parsing")
 	Parser()
-
-
 	Logging("End parsing")
 }
