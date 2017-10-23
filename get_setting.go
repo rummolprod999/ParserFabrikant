@@ -15,11 +15,11 @@ var Server string
 var Port int
 var User string
 var Pass string
-var DbName = "tender"
-
+var DbName string
 
 type Settings struct {
 	Prefix string `xml:"prefix"`
+	Db     string `xml:"db"`
 	UserDb string `xml:"userdb"`
 	PassDb string `xml:"passdb"`
 	Server string `xml:"server"`
@@ -42,6 +42,7 @@ func GetSetting() {
 		Logging(e)
 	}
 	Prefix = settings.Prefix
+	DbName = settings.Db
 	UserDb = settings.UserDb
 	PassDb = settings.PassDb
 	Server = settings.Server

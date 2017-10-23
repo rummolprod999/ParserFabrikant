@@ -5,12 +5,14 @@ import (
 	"encoding/xml"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
 
 func Parser() {
-	for i := 1; i <= 50; i++ {
+	for i := 1; i <= 200; i++ {
 		ParserPage(i)
 	}
 }
@@ -57,7 +59,7 @@ func ParsingTrade(t Trade, db *sql.DB) error {
 	TradeId := t.TradeId
 	PublicationDate := getTimeMoscow(t.PublicationDate)
 	DateUpdated := PublicationDate
-	fmt.Println(DateUpdated)
+	//fmt.Println(DateUpdated)
 	IdXml := TradeId
 	Version := 0
 	stmt, _ := db.Prepare(fmt.Sprintf("SELECT id_tender FROM %stender WHERE purchase_number = ? AND date_version = ?", Prefix))
@@ -68,7 +70,7 @@ func ParsingTrade(t Trade, db *sql.DB) error {
 		return err
 	}
 	if res.Next() {
-		Logging("Такой тендер уже есть", TradeId)
+		//Logging("Такой тендер уже есть", TradeId)
 		res.Close()
 		return nil
 	}
@@ -221,7 +223,254 @@ func ParsingTrade(t Trade, db *sql.DB) error {
 	}
 	idt, err := rest.LastInsertId()
 	idTender = int(idt)
-	fmt.Println(idTender)
 	Addtender++
+	if t.DocumentationUrl != "" {
+		attachName := fmt.Sprintf("Ссылка на страницу с документацией торговой процедуры: %s", PurchaseObjectInfo)
+		stmt, _ := db.Prepare(fmt.Sprintf("INSERT INTO %sattachment SET id_tender = ?, file_name = ?, url = ?", Prefix))
+		_, err := stmt.Exec(idTender, attachName, t.DocumentationUrl)
+		stmt.Close()
+		if err != nil {
+			Logging("Ошибка вставки attachment", err)
+			return err
+		}
+
+	}
+	var LotNumber = 1
+	for _, lot := range t.Lots {
+		idLot := 0
+		MaxPrice := lot.MaxPrice
+		//fmt.Println(MaxPrice)
+		stmt, _ := db.Prepare(fmt.Sprintf("INSERT INTO %slot SET id_tender = ?, lot_number = ?, max_price = ?, currency = ?", Prefix))
+		res, err := stmt.Exec(idTender, LotNumber, MaxPrice, t.Currency)
+		stmt.Close()
+		if err != nil {
+			Logging("Ошибка вставки lot", err)
+			return err
+		}
+		id, _ := res.LastInsertId()
+		idLot = int(id)
+
+		idCustomer := 0
+		if t.Customer != "" {
+			stmt, _ := db.Prepare(fmt.Sprintf("SELECT id_customer FROM %scustomer WHERE full_name LIKE ? LIMIT 1", Prefix))
+			rows, err := stmt.Query(t.Customer)
+			stmt.Close()
+			if err != nil {
+				Logging("Ошибка выполения запроса", err)
+				return err
+			}
+			if rows.Next() {
+				err = rows.Scan(&idCustomer)
+				if err != nil {
+					Logging("Ошибка чтения результата запроса", err)
+					return err
+				}
+				rows.Close()
+			} else {
+				rows.Close()
+				out, err := exec.Command("uuidgen").Output()
+				if err != nil {
+					Logging("Ошибка генерации UUID", err)
+					return err
+				}
+				stmt, _ := db.Prepare(fmt.Sprintf("INSERT INTO %scustomer SET full_name = ?, is223=1, reg_num = ?", Prefix))
+				res, err := stmt.Exec(t.Customer, out)
+				stmt.Close()
+				if err != nil {
+					Logging("Ошибка вставки организатора", err)
+					return err
+				}
+				id, err := res.LastInsertId()
+				idCustomer = int(id)
+			}
+		}
+		//fmt.Println(idLot, idCustomer)
+		okpd2Code := lot.ContractSubject
+		okpdName := lot.ContractSubjectText
+		Name := strings.TrimSpace(fmt.Sprintf("%s %s", lot.ContractSubjectText, lot.Description))
+		okpd2GroupCode, okpd2GroupLevel1Code := GetOkpd(okpd2Code)
+		stmtr, _ := db.Prepare(fmt.Sprintf("INSERT INTO %spurchase_object SET id_lot = ?, id_customer = ?, okpd2_code = ?, okpd2_group_code = ?, okpd2_group_level1_code = ?, okpd_name = ?, name = ?, quantity_value = ?, customer_quantity_value = ?, okei = ?, price = ?", Prefix))
+		_, errr := stmtr.Exec(idLot, idCustomer, okpd2Code, okpd2GroupCode, okpd2GroupLevel1Code, okpdName, Name, lot.Quantity, lot.Quantity, lot.MeasureUnit, lot.MaxPrice)
+		stmtr.Close()
+		if errr != nil {
+			Logging("Ошибка вставки purchase_object", errr)
+			return err
+		}
+	}
+	e := TenderKwords(db, idTender)
+	if e != nil {
+		Logging("Ошибка обработки TenderKwords", e)
+	}
+
+	e1 := AddVerNumber(db, TradeId)
+	if e1 != nil {
+		Logging("Ошибка обработки AddVerNumber", e1)
+	}
+	return nil
+}
+
+func TenderKwords(db *sql.DB, idTender int) error {
+	resString := ""
+	stmt, _ := db.Prepare(fmt.Sprintf("SELECT DISTINCT po.name, po.okpd_name FROM %spurchase_object AS po LEFT JOIN %slot AS l ON l.id_lot = po.id_lot WHERE l.id_tender = ?", Prefix, Prefix))
+	rows, err := stmt.Query(idTender)
+	stmt.Close()
+	if err != nil {
+		Logging("Ошибка выполения запроса", err)
+		return err
+	}
+	for rows.Next() {
+		var name sql.NullString
+		var okpdName sql.NullString
+		err = rows.Scan(&name, &okpdName)
+		if err != nil {
+			Logging("Ошибка чтения результата запроса", err)
+			return err
+		}
+		if name.Valid {
+			resString = fmt.Sprintf("%s %s ", resString, name.String)
+		}
+		if okpdName.Valid {
+			resString = fmt.Sprintf("%s %s ", resString, okpdName.String)
+		}
+	}
+	rows.Close()
+	stmt1, _ := db.Prepare(fmt.Sprintf("SELECT DISTINCT file_name FROM %sattachment WHERE id_tender = ?", Prefix))
+	rows1, err := stmt1.Query(idTender)
+	stmt1.Close()
+	if err != nil {
+		Logging("Ошибка выполения запроса", err)
+		return err
+	}
+	for rows1.Next() {
+		var attName sql.NullString
+		err = rows1.Scan(&attName)
+		if err != nil {
+			Logging("Ошибка чтения результата запроса", err)
+			return err
+		}
+		if attName.Valid {
+			resString = fmt.Sprintf("%s %s ", resString, attName.String)
+		}
+	}
+	rows1.Close()
+	idOrg := 0
+	stmt2, _ := db.Prepare(fmt.Sprintf("SELECT purchase_object_info, id_organizer FROM %stender WHERE id_tender = ?", Prefix))
+	rows2, err := stmt2.Query(idTender)
+	stmt2.Close()
+	if err != nil {
+		Logging("Ошибка выполения запроса", err)
+		return err
+	}
+	for rows2.Next() {
+		var idOrgNull sql.NullInt64
+		var purOb sql.NullString
+		err = rows2.Scan(&purOb, &idOrgNull)
+		if err != nil {
+			Logging("Ошибка чтения результата запроса", err)
+			return err
+		}
+		if idOrgNull.Valid {
+			idOrg = int(idOrgNull.Int64)
+		}
+		if purOb.Valid {
+			resString = fmt.Sprintf("%s %s ", resString, purOb.String)
+		}
+
+	}
+	rows2.Close()
+	if idOrg != 0 {
+		stmt3, _ := db.Prepare(fmt.Sprintf("SELECT full_name, inn FROM %sorganizer WHERE id_organizer = ?", Prefix))
+		rows3, err := stmt3.Query(idOrg)
+		stmt3.Close()
+		if err != nil {
+			Logging("Ошибка выполения запроса", err)
+			return err
+		}
+		for rows3.Next() {
+			var innOrg sql.NullString
+			var nameOrg sql.NullString
+			err = rows3.Scan(&nameOrg, &innOrg)
+			if err != nil {
+				Logging("Ошибка чтения результата запроса", err)
+				return err
+			}
+			if innOrg.Valid {
+
+				resString = fmt.Sprintf("%s %s ", resString, innOrg.String)
+			}
+			if nameOrg.Valid {
+				resString = fmt.Sprintf("%s %s ", resString, nameOrg.String)
+			}
+
+		}
+		rows3.Close()
+	}
+	stmt4, _ := db.Prepare(fmt.Sprintf("SELECT DISTINCT cus.inn, cus.full_name FROM %scustomer AS cus LEFT JOIN %spurchase_object AS po ON cus.id_customer = po.id_customer LEFT JOIN %slot AS l ON l.id_lot = po.id_lot WHERE l.id_tender = ?", Prefix, Prefix, Prefix))
+	rows4, err := stmt4.Query(idTender)
+	stmt4.Close()
+	if err != nil {
+		Logging("Ошибка выполения запроса", err)
+		return err
+	}
+	for rows4.Next() {
+		var innC sql.NullString
+		var fullNameC sql.NullString
+		err = rows4.Scan(&innC, &fullNameC)
+		if err != nil {
+			Logging("Ошибка чтения результата запроса", err)
+			return err
+		}
+		if innC.Valid {
+
+			resString = fmt.Sprintf("%s %s ", resString, innC.String)
+		}
+		if fullNameC.Valid {
+			resString = fmt.Sprintf("%s %s ", resString, fullNameC.String)
+		}
+	}
+	rows4.Close()
+	re := regexp.MustCompile(`\s+`)
+	resString = re.ReplaceAllString(resString, " ")
+	stmtr, _ := db.Prepare(fmt.Sprintf("UPDATE %stender SET tender_kwords = ? WHERE id_tender = ?", Prefix))
+	_, errr := stmtr.Exec(resString, idTender)
+	stmtr.Close()
+	if errr != nil {
+		Logging("Ошибка вставки TenderKwords", errr)
+		return err
+	}
+	return nil
+}
+
+func AddVerNumber(db *sql.DB, RegistryNumber string) error {
+	verNum := 1
+	mapTenders := make(map[int]int)
+	stmt, _ := db.Prepare(fmt.Sprintf("SELECT id_tender FROM %stender WHERE purchase_number = ? ORDER BY UNIX_TIMESTAMP(date_version) ASC", Prefix))
+	rows, err := stmt.Query(RegistryNumber)
+	stmt.Close()
+	if err != nil {
+		Logging("Ошибка выполения запроса", err)
+		return err
+	}
+	for rows.Next() {
+		var rNum int
+		err = rows.Scan(&rNum)
+		if err != nil {
+			Logging("Ошибка чтения результата запроса", err)
+			return err
+		}
+		mapTenders[verNum] = rNum
+		verNum++
+	}
+	rows.Close()
+	for vn, idt := range mapTenders {
+		stmtr, _ := db.Prepare(fmt.Sprintf("UPDATE %stender SET num_version = ? WHERE id_tender = ?", Prefix))
+		_, errr := stmtr.Exec(vn, idt)
+		stmtr.Close()
+		if errr != nil {
+			Logging("Ошибка вставки NumVersion", errr)
+			return err
+		}
+	}
+
 	return nil
 }
