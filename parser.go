@@ -12,7 +12,7 @@ import (
 )
 
 func Parser() {
-	for i := 1; i <= Count; i++ {
+	for i := Count; i >= 1; i-- {
 		ParserPage(i)
 	}
 }
