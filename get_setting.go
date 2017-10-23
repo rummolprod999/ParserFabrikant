@@ -16,6 +16,7 @@ var Port int
 var User string
 var Pass string
 var DbName string
+var Count int
 
 type Settings struct {
 	Prefix string `xml:"prefix"`
@@ -26,6 +27,7 @@ type Settings struct {
 	Port   int    `xml:"port"`
 	User   string `xml:"user"`
 	Pass   string `xml:"pass"`
+	Count  int    `xml:"count"`
 }
 
 func GetSetting() {
@@ -49,4 +51,5 @@ func GetSetting() {
 	Port = settings.Port
 	User = settings.User
 	Pass = settings.Pass
+	Count = settings.Count
 }
