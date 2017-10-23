@@ -15,6 +15,8 @@ var Server string
 var Port int
 var User string
 var Pass string
+var DbName = "tender"
+
 
 type Settings struct {
 	Prefix string `xml:"prefix"`

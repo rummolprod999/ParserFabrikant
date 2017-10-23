@@ -1,8 +1,6 @@
 package main
 
-import (
-
-)
+import "fmt"
 
 func init() {
 	CreateLogFile()
@@ -10,9 +8,12 @@ func init() {
 
 }
 
+var Addtender = 0
+
 func main() {
 	defer SaveStack()
 	Logging("Start parsing")
 	Parser()
 	Logging("End parsing")
+	Logging(fmt.Sprintf("Добавили тендеров %d", Addtender))
 }
