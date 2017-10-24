@@ -28,6 +28,8 @@ func ParserPage(i int) {
 	r := DownloadPage(UrlXml)
 	if r != "" {
 		ParsingString(r)
+	} else {
+		Logging("Получили пустую строку", UrlXml)
 	}
 }
 
