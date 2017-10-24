@@ -56,11 +56,11 @@ func DownloadPage(url string) string {
 	for {
 		//fmt.Println("Start download file")
 		if count > 50 {
-			Logging(fmt.Sprintf("Не скачали файл за %d попыток", count))
+			Logging(fmt.Sprintf("Не скачали файл за %d попыток %s", count, url))
 			return st
 		}
 		st = GetPage(url)
-		if st != "" {
+		if st != "" && len(st) > 220 {
 			return st
 		}
 		Logging("Gets empty string", url)
