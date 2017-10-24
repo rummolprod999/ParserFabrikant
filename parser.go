@@ -14,6 +14,7 @@ import (
 func Parser() {
 	for i := Count; i >= 1; i-- {
 		ParserPage(i)
+		time.Sleep(time.Second * 5)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 var UrlXml string
@@ -64,6 +65,7 @@ func DownloadPage(url string) string {
 		}
 		Logging("Gets empty string", url)
 		count++
+		time.Sleep(time.Second * 5)
 	}
 	return st
 }
