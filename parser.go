@@ -48,6 +48,9 @@ func ParsingString(s string) {
 	if err != nil {
 		Logging("Ошибка подключения к БД", err)
 	}
+	if len(FileProt.TradeList) == 0 {
+		Logging("Нет процедур в файле", UrlXml, s)
+	}
 	for _, t := range FileProt.TradeList {
 		e := ParsingTrade(t, db)
 		if e != nil {
