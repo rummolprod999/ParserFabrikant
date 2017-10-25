@@ -41,7 +41,7 @@ func ParsingString(s string) {
 		Logging("Ошибка при парсинге строки", err)
 		return
 	}
-	var Dsn = fmt.Sprintf("%s:%s@/%s?charset=utf8&parseTime=true&readTimeout=60m&maxAllowedPacket=0&timeout=60m&writeTimeout=60m&autocommit=true", UserDb, PassDb, DbName)
+	var Dsn = fmt.Sprintf("%s:%s@/%s?charset=utf8&parseTime=true&readTimeout=60m&maxAllowedPacket=0&timeout=60m&writeTimeout=60m&autocommit=true&loc=Local", UserDb, PassDb, DbName)
 	db, err := sql.Open("mysql", Dsn)
 	defer db.Close()
 	//db.SetMaxOpenConns(2)
